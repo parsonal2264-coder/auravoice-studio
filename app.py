@@ -276,6 +276,7 @@ def preview():
 @app.post("/api/generate")
 def generate():
     payload = request.get_json(silent=True) or {}
+    voice_cache.clear()
     script = str(payload.get("script", "")).strip()
     voice_id = str(payload.get("voice_id", "")).strip()
     if not script or len(script) > MAX_SCRIPT_CHARS or not voice_id:
