@@ -40,7 +40,6 @@ VOICE_SLOTS = [
     ("Amy", "Natural and sweet", "VOICE_AMY_ID"),
 ]
 
-
 def load_keys() -> list[str]:
     values: list[str] = []
     for index in range(1, 101):
@@ -54,11 +53,8 @@ def load_keys() -> list[str]:
     if values:
         return values
     return [
-        x.strip()
-        for x in os.environ.get("ELEVENLABS_API_KEYS", "").split(",")
-        if x.strip()
+        x.strip() for x in os.environ.get("ELEVENLABS_API_KEYS", "").split(",") if x.strip()
     ]
-
 
 def get_keys() -> list[str]:
     values = load_keys()
@@ -67,7 +63,6 @@ def get_keys() -> list[str]:
             state["usage"] = [0] * len(values)
     return values
 
-
 def provider_error(response: requests.Response) -> str:
     try:
         payload = response.json()
@@ -75,7 +70,6 @@ def provider_error(response: requests.Response) -> str:
         return detail if isinstance(detail, str) else str(detail)
     except ValueError:
         return response.text[:300] or "ElevenLabs request failed."
-
 
 def elevenlabs(
     method: str,
@@ -117,7 +111,6 @@ def elevenlabs(
         state["errors"] += 1
     raise RuntimeError(last_error)
 
-
 def load_account_voices(force: bool = False) -> list[dict[str, Any]]:
     now = time.time()
     if not force and voice_cache["voices"] and voice_cache["expires"] > now:
@@ -135,7 +128,6 @@ def load_account_voices(force: bool = False) -> list[dict[str, Any]]:
         except Exception:
             pass
     raise RuntimeError("Voice loading failed.")
-
 
 def combined_catalog() -> list[dict[str, Any]]:
     account = load_account_voices()
@@ -156,7 +148,6 @@ def combined_catalog() -> list[dict[str, Any]]:
             )
     return result
 
-
 def apply_pronunciation(text: str, rules: str) -> str:
     for line in str(rules or "").splitlines():
         if "=" not in line:
@@ -168,7 +159,6 @@ def apply_pronunciation(text: str, rules: str) -> str:
                 rf"\b{re.escape(word)}\b", spoken, text, flags=re.IGNORECASE
             )
     return text
-
 
 def synthesis_text(script: str, tags: list[str], rules: str, speed: float) -> str:
     clean_tags = [str(tag).strip() for tag in (tags or []) if str(tag).strip()]
@@ -187,7 +177,6 @@ def synthesis_text(script: str, tags: list[str], rules: str, speed: float) -> st
         else ""
     )
     return prefix + pace + apply_pronunciation(script.strip(), rules)
-
 
 def synthesize(
     voice_id: str,
@@ -215,11 +204,9 @@ def synthesize(
         state["renders"] += 1
     return audio, key_index
 
-
 @app.get("/")
 def home():
     return render_template("index.html")
-
 
 @app.get("/api/health")
 def health():
@@ -234,14 +221,12 @@ def health():
         }
     )
 
-
 @app.get("/api/voices")
 def voices():
     try:
         return jsonify({"voices": combined_catalog()})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
-
 
 @app.get("/api/credits")
 def credits():
@@ -251,7 +236,6 @@ def credits():
             "total_credits": "View Hugging Face logs",
         }
     )
-
 
 @app.post("/api/preview")
 def preview():
@@ -272,15 +256,18 @@ def preview():
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
 
-
 @app.post("/api/generate")
 def generate():
     payload = request.get_json(silent=True) or {}
     voice_cache.clear()
     script = str(payload.get("script", "")).strip()
     voice_id = str(payload.get("voice_id", "")).strip()
-    if not script or len(script) > MAX_SCRIPT_CHARS or not voice_id:
-        return jsonify({"error": "Invalid input."}), 400
+    
+    if not script:
+        return jsonify({"error": "Script is required."}), 400
+    if not voice_id:
+        return jsonify({"error": "Voice ID is required."}), 400
+    
     try:
         text = synthesis_text(
             script,
@@ -303,7 +290,6 @@ def generate():
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
 
-
 def convert_audio(mp3: bytes, output_format: str) -> io.BytesIO:
     options = {
         "wav": ["-ar", "44100", "-ac", "2", "-c:a", "pcm_s16le", "-f", "wav"],
@@ -313,6 +299,9 @@ def convert_audio(mp3: bytes, output_format: str) -> io.BytesIO:
         "webm": ["-c:a", "libopus", "-b:a", "128k", "-f", "webm"],
     }
     args = options.get(output_format)
+    if not args:
+        args = ["-c:a", "libmp3lame", "-f", "mp3"]
+        
     with tempfile.NamedTemporaryFile(suffix=".mp3") as source:
         source.write(mp3)
         source.flush()
@@ -333,16 +322,13 @@ def convert_audio(mp3: bytes, output_format: str) -> io.BytesIO:
         )
     return io.BytesIO(process.stdout)
 
-
 @app.post("/api/export")
 def export_audio():
     payload = request.get_json(silent=True) or {}
     output_format = str(payload.get("format", "mp3")).lower()
     raw = base64.b64decode(str(payload.get("audio_base64", "")))
     output = (
-        io.BytesIO(raw)
-        if output_format == "mp3"
-        else convert_audio(raw, output_format)
+        io.BytesIO(raw) if output_format == "mp3" else convert_audio(raw, output_format)
     )
     output.seek(0)
     mime = {
@@ -352,14 +338,13 @@ def export_audio():
         "flac": "audio/flac",
         "m4a": "audio/mp4",
         "webm": "audio/webm",
-    }.get(output_format)
+    }.get(output_format, "audio/mpeg")
     return send_file(
         output,
         mimetype=mime,
         as_attachment=True,
         download_name=f"auravoice.{output_format}",
     )
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT, debug=False)
