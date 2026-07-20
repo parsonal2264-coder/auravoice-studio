@@ -1,23 +1,26 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PORT=7860
-
+# System dependencies — ffmpeg is required for audio export format conversion (wav/ogg/flac/m4a/webm)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
+# Python dependencies (cached layer)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
+# Application code
 COPY . .
 
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
-USER appuser
-
+# Hugging Face Spaces expects the app on port 7860
+ENV PORT=7860
 EXPOSE 7860
 
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "2", "--timeout", "180", "--keep-alive", "5", "app:app"]
+# Run as a non-root user (Hugging Face Spaces best practice)
+RUN useradd -m -u 1000 user && chown -R user /app
+USER user
+
+CMD ["python", "app.py"]
